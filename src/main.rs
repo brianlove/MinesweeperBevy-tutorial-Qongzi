@@ -6,20 +6,22 @@ use bevy_inspector_egui::WorldInspectorPlugin;
 
 fn camera_setup(mut commands: Commands) {
     // 2D orthographic camera
-    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
+    commands.spawn(Camera2dBundle::default());
 }
 
 fn main() {
     let mut app = App::new();
 
     // Window setup
-    app.insert_resource(WindowDescriptor {
+    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+        window: WindowDescriptor {
             title: "Minesweeper".to_string(),
             width: 700.,
             height: 800.,
-            ..Default::default()
-        })
-        .add_plugins(DefaultPlugins);
+            ..default()
+        },
+        ..default()
+    }));
 
     #[cfg(feature = "debug")]
     app.add_plugin(WorldInspectorPlugin::new());
