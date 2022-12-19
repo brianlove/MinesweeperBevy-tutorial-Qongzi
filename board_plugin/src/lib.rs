@@ -3,7 +3,10 @@ pub mod resources;
 
 use bevy::log;
 use bevy::prelude::*;
-use components::Coordinates;
+#[cfg(feature = "debug")]
+use bevy_inspector_egui::RegisterInspectable;
+use components::*;
+use crate::resources::tile::Tile;
 use resources::tile_map::TileMap;
 use resources::BoardOptions;
 use resources::BoardPosition;
@@ -16,6 +19,15 @@ impl Plugin for BoardPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(Self::create_board);
         log::info!("Loaded BoardPlugin");
+
+        #[cfg(feature = "debug")]
+        {
+            // Lets us edit components in the inspector
+            app.register_inspectable::<Coordinates>();
+            app.register_inspectable::<BombNeighbor>();
+            app.register_inspectable::<Bomb>();
+            app.register_inspectable::<Uncover>();
+        }
     }
 }
 
@@ -27,6 +39,8 @@ impl BoardPlugin {
         // ISSUE: `window` isn't working (likely due to Bevy 0.9)
         // window: Res<WindowDescriptor>,
         windows: Res<Windows>,
+        mut materials: ResMut<Assets<ColorMaterial>>,
+        asset_server: Res<AssetServer>,
     ) {
         let options = match board_options {
             None => BoardOptions::default(),
@@ -60,9 +74,15 @@ impl BoardPlugin {
             BoardPosition::Custom(p) => p,
         };
 
+        // TODO: refactor into a resource later on (in later chapter)
+        let font: Handle<Font> = asset_server.load("fonts/pixeled.ttf");
+        let bomb_image: Handle<Image> = asset_server.load("sprites/bomb.png");
+
         commands
             // NOTE: Bevy 0.9 expects a `Bundle` with `.spawn()`, but `.spawn_empty()` is available instead
-            .spawn_empty()
+            // Actually, we need to use `.spawn(SpatialBundle::default())` to make sure that things have visibility
+            // https://bevyengine.org/learn/book/migration-guides/0.7-0.8/#visibilty-inheritance-universal-computedvisibility-and-renderlayers-support
+            .spawn(SpatialBundle::default())
             .insert(Name::new("Board"))
             .insert(Transform::from_translation(board_position))
             .insert(GlobalTransform::default())
@@ -80,34 +100,120 @@ impl BoardPlugin {
                     })
                     .insert(Name::new("Background"));
 
-                for (y, line) in tile_map.iter().enumerate() {
-                    for (x, tile) in line.iter().enumerate() {
-                        parent
-                            .spawn(SpriteBundle {
-                                sprite: Sprite {
-                                    color: Color::GRAY,
-                                    custom_size: Some(Vec2::splat(
-                                        tile_size - options.tile_padding as f32,
-                                    )),
-                                    ..Default::default()
-                                },
-                                transform: Transform::from_xyz(
-                                    (x as f32 * tile_size) + (tile_size / 2.),
-                                    (y as f32 * tile_size) + (tile_size / 2.),
-                                    1.,
-                                ),
-                                ..Default::default()
-                            })
-                            .insert(Name::new(format!("Tile ({}, {})", x, y)))
-                            .insert(Coordinates {
-                                x: x as u16,
-                                y: y as u16,
-                            });
-                    }
-                }
+                Self::spawn_tiles(
+                    parent,
+                    &tile_map,
+                    tile_size,
+                    options.tile_padding,
+                    Color::GRAY,
+                    bomb_image,
+                    font,
+                );
             });
     }
 
+
+    fn spawn_tiles(
+        parent: &mut ChildBuilder,
+        tile_map: &TileMap,
+        size: f32,
+        padding: f32,
+        color: Color,
+        bomb_image: Handle<Image>,
+        font: Handle<Font>,
+    ) {
+        for (y, line) in tile_map.iter().enumerate() {
+            for (x, tile) in line.iter().enumerate() {
+                let coordinates = Coordinates {
+                    x: x as u16,
+                    y: y as u16,
+                };
+                // let mut cmd = parent.spawn_empty();
+                let mut cmd = parent.spawn(SpatialBundle::default());
+                cmd.insert(SpriteBundle {
+                        sprite: Sprite {
+                            color: Color::GRAY,
+                            custom_size: Some(Vec2::splat(
+                                size - padding as f32,
+                            )),
+                            ..Default::default()
+                        },
+                        transform: Transform::from_xyz(
+                            (x as f32 * size) + (size / 2.),
+                            (y as f32 * size) + (size / 2.),
+                            1.,
+                        ),
+                        ..Default::default()
+                    })
+                    .insert(Name::new(format!("Tile ({}, {})", x, y)))
+                    .insert(Coordinates {
+                        x: x as u16,
+                        y: y as u16,
+                    });
+
+                match tile {
+                    Tile::Bomb => {
+                        cmd.insert(Bomb);
+                        cmd.with_children(|parent| {
+                            parent.spawn(SpriteBundle {
+                                sprite: Sprite {
+                                    custom_size: Some(Vec2::splat(size - padding)),
+                                    ..Default::default()
+                                },
+                                transform: Transform::from_xyz(0., 0., 1.),
+                                texture: bomb_image.clone(),
+                                ..Default::default()
+                            });
+                        });
+                    },
+                    Tile::BombNeighbor(v) => {
+                        cmd.insert(BombNeighbor { count: *v });
+                        cmd.with_children(|parent| {
+                            parent.spawn(Self::bomb_count_text_bundle(
+                                *v,
+                                font.clone(),
+                                size - padding,
+                            ));
+                        });
+                    },
+                    Tile::Empty => (),
+                }
+            }
+        }
+    }
+
+
+    fn bomb_count_text_bundle(count: u8, font: Handle<Font>, size: f32) -> Text2dBundle {
+        let (text, color) = (
+            count.to_string(),
+            match count {
+                1 => Color::WHITE,
+                2 => Color::GREEN,
+                3 => Color::YELLOW,
+                4 => Color::ORANGE,
+                _ => Color::PURPLE,
+            },
+        );
+
+        return Text2dBundle {
+            text: Text {
+                sections: vec![TextSection {
+                    value: text,
+                    style: TextStyle {
+                        color,
+                        font,
+                        font_size: size,
+                    },
+                }],
+                alignment: TextAlignment {
+                    vertical: VerticalAlign::Center,
+                    horizontal: HorizontalAlign::Center,
+                },
+            },
+            transform: Transform::from_xyz(0., 0., 1.),
+            ..Default::default()
+        };
+    }
 
     fn adaptive_tile_size(
         window: &Window,
