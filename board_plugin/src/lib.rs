@@ -1,23 +1,30 @@
 pub mod components;
 pub mod resources;
+mod bounds;
+mod systems;
 
 use bevy::log;
+use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
 #[cfg(feature = "debug")]
 use bevy_inspector_egui::RegisterInspectable;
+use bounds::Bounds2;
 use components::*;
 use crate::resources::tile::Tile;
 use resources::tile_map::TileMap;
+use resources::Board;
 use resources::BoardOptions;
 use resources::BoardPosition;
 use resources::TileSize;
+
 
 pub struct BoardPlugin;
 
 
 impl Plugin for BoardPlugin {
     fn build(&self, app: &mut App) {
-        app.add_startup_system(Self::create_board);
+        app.add_startup_system(Self::create_board)
+            .add_system(systems::input::input_handling);
         log::info!("Loaded BoardPlugin");
 
         #[cfg(feature = "debug")]
@@ -109,6 +116,16 @@ impl BoardPlugin {
                     bomb_image,
                     font,
                 );
+            });
+
+        commands
+            .insert_resource(Board {
+                tile_map,
+                bounds: Bounds2 {
+                    position: board_position.xy(),
+                    size: board_size,
+                },
+                tile_size,
             });
     }
 

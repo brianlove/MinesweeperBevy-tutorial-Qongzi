@@ -10,10 +10,11 @@ default = []
 debug = ["board_plugin/debug", "bevy-inspector-egui"]
 
 [dependencies]
-bevy = "0.9"
+bevy = { version = "0.9.1", default-features = false, features = []}
 board_plugin = { path = "board_plugin" }
 
 bevy-inspector-egui = { version = "0.14", optional = true }
+
 
 [workspace]
 members = ["board_plugin"]
