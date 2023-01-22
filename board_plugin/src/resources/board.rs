@@ -10,6 +10,7 @@ pub struct Board {
     pub tile_map: TileMap,
     pub tile_size: f32,
     pub covered_tiles: HashMap<Coordinates, Entity>,
+    pub entity: Entity,
 }
 
 impl Board {
