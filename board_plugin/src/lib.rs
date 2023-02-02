@@ -13,6 +13,7 @@ use bevy::utils::HashMap;
 use bevy_inspector_egui::RegisterInspectable;
 use bounds::Bounds2;
 use components::*;
+use resources::BoardAssets;
 use crate::events::*;
 use crate::resources::tile::Tile;
 use resources::tile_map::TileMap;
@@ -66,11 +67,11 @@ impl<T> BoardPlugin<T> {
     pub fn create_board(
         mut commands: Commands,
         board_options: Option<Res<BoardOptions>>,
+        board_assets: Res<BoardAssets>,
         // ISSUE: `window` isn't working (likely due to Bevy 0.9)
         // window: Res<WindowDescriptor>,
         windows: Res<Windows>,
-        mut materials: ResMut<Assets<ColorMaterial>>,
-        asset_server: Res<AssetServer>,
+        // mut materials: ResMut<Assets<ColorMaterial>>,
     ) {
         let options = match board_options {
             None => BoardOptions::default(),
@@ -104,10 +105,6 @@ impl<T> BoardPlugin<T> {
             BoardPosition::Custom(p) => p,
         };
 
-        // TODO: refactor into a resource later on (in later chapter)
-        let font: Handle<Font> = asset_server.load("fonts/pixeled.ttf");
-        let bomb_image: Handle<Image> = asset_server.load("sprites/bomb.png");
-
         let mut covered_tiles = HashMap::with_capacity((tile_map.width() * tile_map.height()).into());
         let mut safe_start = None;
 
@@ -124,10 +121,11 @@ impl<T> BoardPlugin<T> {
                     // NOTE: Bevy 0.9 uses `.spawn()`, which can now handle `Bundle`s
                     .spawn(SpriteBundle {
                         sprite: Sprite {
-                            color: Color::WHITE,
+                            color: board_assets.board_material.color,
                             custom_size: Some(board_size),
                             ..Default::default()
                         },
+                        texture: board_assets.board_material.texture.clone(),
                         transform: Transform::from_xyz(board_size.x / 2., board_size.y / 2., 0.),
                         ..Default::default()
                     })
@@ -138,10 +136,7 @@ impl<T> BoardPlugin<T> {
                     &tile_map,
                     tile_size,
                     options.tile_padding,
-                    Color::GRAY,
-                    bomb_image,
-                    font,
-                    Color::DARK_GRAY,
+                    &board_assets,
                     &mut covered_tiles,
                     &mut safe_start,
                 );
@@ -173,10 +168,7 @@ impl<T> BoardPlugin<T> {
         tile_map: &TileMap,
         size: f32,
         padding: f32,
-        color: Color,
-        bomb_image: Handle<Image>,
-        font: Handle<Font>,
-        covered_tile_color: Color,
+        board_assets: &BoardAssets,
         covered_tiles: &mut HashMap<Coordinates, Entity>,
         safe_start_entity: &mut Option<Entity>,
     ) {
@@ -190,7 +182,7 @@ impl<T> BoardPlugin<T> {
                 let mut cmd = parent.spawn(SpatialBundle::default());
                 cmd.insert(SpriteBundle {
                         sprite: Sprite {
-                            color: Color::GRAY,
+                            color: board_assets.tile_material.color,
                             custom_size: Some(Vec2::splat(
                                 size - padding as f32,
                             )),
@@ -201,6 +193,7 @@ impl<T> BoardPlugin<T> {
                             (y as f32 * size) + (size / 2.),
                             1.,
                         ),
+                        texture: board_assets.tile_material.texture.clone(),
                         ..Default::default()
                     })
                     .insert(Name::new(format!("Tile ({}, {})", x, y)))
@@ -219,7 +212,8 @@ impl<T> BoardPlugin<T> {
                                     ..Default::default()
                                 },
                                 transform: Transform::from_xyz(0., 0., 1.),
-                                texture: bomb_image.clone(),
+                                // `texture` used directly instead of `material` starting in Bevy 0.6
+                                texture: board_assets.bomb_material.texture.clone(),
                                 ..Default::default()
                             });
                         });
@@ -229,7 +223,7 @@ impl<T> BoardPlugin<T> {
                         cmd.with_children(|parent| {
                             parent.spawn(Self::bomb_count_text_bundle(
                                 *v,
-                                font.clone(),
+                                board_assets,
                                 size - padding,
                             ));
                         });
@@ -243,9 +237,10 @@ impl<T> BoardPlugin<T> {
                         .spawn(SpriteBundle {
                             sprite: Sprite {
                                 custom_size: Some(Vec2::splat(size - padding)),
-                                color: covered_tile_color,
+                                color: board_assets.covered_tile_material.color,
                                 ..Default::default()
                             },
+                            texture: board_assets.covered_tile_material.texture.clone(),
                             transform: Transform::from_xyz(0., 0., 2.),
                             ..Default::default()
                         })
@@ -261,25 +256,20 @@ impl<T> BoardPlugin<T> {
     }
 
 
-    fn bomb_count_text_bundle(count: u8, font: Handle<Font>, size: f32) -> Text2dBundle {
-        let (text, color) = (
-            count.to_string(),
-            match count {
-                1 => Color::WHITE,
-                2 => Color::GREEN,
-                3 => Color::YELLOW,
-                4 => Color::ORANGE,
-                _ => Color::PURPLE,
-            },
-        );
+    fn bomb_count_text_bundle(
+        count: u8,
+        board_assets: &BoardAssets,
+        size: f32
+    ) -> Text2dBundle {
+        let color = board_assets.bomb_counter_color(count);
 
         return Text2dBundle {
             text: Text {
                 sections: vec![TextSection {
-                    value: text,
+                    value: count.to_string(),
                     style: TextStyle {
                         color,
-                        font,
+                        font: board_assets.bomb_counter_font.clone(),
                         font_size: size,
                     },
                 }],
