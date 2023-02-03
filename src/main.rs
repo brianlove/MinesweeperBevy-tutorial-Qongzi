@@ -92,7 +92,11 @@ fn setup_board(
     });
 
     // Plugin activation
-    state.set(AppState::InGame).unwrap();
+    // Workaround for panic when using `state.set()`; see https://github.com/bevyengine/bevy/issues/5552:
+    //   thread 'Compute Task Pool (5)' panicked at 'called `Result::unwrap()` on an `Err` value: StateAlreadyQueued', src/main.rs:96:33
+    //   note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+    //   thread 'main' panicked at 'called `Option::unwrap()` on a `None` value', /home/brian/.cargo/registry/src/github.com-1ecc6299db9ec823/bevy_tasks-0.9.1/src/task_pool.rs:273:45
+    state.overwrite_set(AppState::InGame).unwrap();
 }
 
 fn state_handler(mut state: ResMut<State<AppState>>, keys: Res<Input<KeyCode>>) {
