@@ -42,13 +42,17 @@ impl<T: StateData> Plugin for BoardPlugin<T> {
             )
             .add_system_set(
                 SystemSet::on_in_stack_update(self.running_state.clone())
-                    .with_system(systems::uncover::uncover_tiles),
+                    .with_system(systems::uncover::uncover_tiles)
+                    .with_system(systems::mark::mark_tiles),
             )
             .add_system_set(
                 SystemSet::on_exit(self.running_state.clone())
                     .with_system(Self::cleanup_board)
             )
-            .add_event::<TileTriggerEvent>();
+            .add_event::<TileTriggerEvent>()
+            .add_event::<TileMarkEvent>()
+            .add_event::<BombExplosionEvent>()
+            .add_event::<BoardCompletedEvent>();
         log::info!("Loaded BoardPlugin");
 
         #[cfg(feature = "debug")]
@@ -159,6 +163,7 @@ impl<T> BoardPlugin<T> {
                 tile_map,
                 tile_size,
                 entity: board_entity,
+                marked_tiles: Vec::new(),
             });
     }
 
